@@ -1,7 +1,30 @@
+# Copyright 2020, Eero Helenius
+
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+
+#    http://www.apache.org/licenses/LICENSE-2.0
+
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import html, json, os, re, socket, sublime, sublime_plugin, threading, time
 from collections import defaultdict
-from .src import bencode
+from .src import bencode, indent
 from typing import Any, Dict, Tuple
+
+from sublime_plugin import (
+    EventListener,
+    ListInputHandler,
+    TextCommand,
+    TextInputHandler,
+    ViewEventListener,
+    WindowCommand,
+)
 
 ns = 'clojure-sublimed'
 
@@ -763,3 +786,24 @@ def plugin_unloaded():
     conn.disconnect()
     sublime.load_settings("Preferences.sublime-settings").clear_on_change(ns)
     settings().clear_on_change(ns)
+
+class TutkainInsertNewlineCommand(TextCommand):
+    def run(self, edit):
+        indent.insert_newline_and_indent(self.view, edit)
+
+
+class TutkainIndentSexpCommand(TextCommand):
+    def get_target_region(self, region, scope):
+        if not region.empty():
+            return region
+        elif scope == "innermost" and (innermost := sexp.innermost(self.view, region.begin())):
+            return innermost.extent()
+        elif outermost := sexp.outermost(self.view, region.begin()):
+            return outermost.extent()
+
+    def run(self, edit, scope="outermost", prune=False):
+        assert scope in {"innermost", "outermost"}
+
+        for region in self.view.sel():
+            if target := self.get_target_region(region, scope):
+                indent.indent_region(self.view, edit, target, prune=prune)
